@@ -438,25 +438,39 @@ form .btn{justify-content:center;margin-top:4px}
     });
   });
 
-  // Kehadiran & ucapan (tersimpan di browser tamu saja; contoh)
-  var list=[];
-  try{list=JSON.parse(localStorage.getItem('ucapan-sh2')||'[]')}catch(e){list=[]}
+  // Kehadiran & ucapan — terhubung ke Google Sheet
+  var GAS='https://script.google.com/macros/s/AKfycbxrm1oT9Rt8tWwLy53tqigMUHSdgvW27OFtNYvYSC1r9AX-pAh0v_ltMdzFJQmkAgK-Jg/exec';
   function esc(s){return String(s).replace(/[&<>"]/g,function(c){return{'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]})}
-  function render(){
-    var box=$('msgs'),hadir=0;
-    list.forEach(function(m){if(m.h)hadir+=m.k});
-    $('stT').textContent=list.length+' Total Ucapan';$('stH').textContent=hadir+' Orang Menyatakan Hadir';
-    if(!list.length){box.innerHTML='<p class="empty">Belum ada ucapan. Jadilah yang pertama.</p>';return}
-    box.innerHTML=list.map(function(m){return '<div class="msg"><b>'+esc(m.n)+'</b><em>'+(m.h?'Hadir, '+m.k+' orang':'Tidak hadir')+'</em><p>'+esc(m.t)+'</p></div>'}).join('');
+  function render(data){
+    var box=$('msgs');
+    $('stT').textContent=(data.total||0)+' Total Ucapan';
+    $('stH').textContent=(data.hadir||0)+' Orang Menyatakan Hadir';
+    if(!data.ucapan||!data.ucapan.length){box.innerHTML='<p class="empty">Belum ada ucapan. Jadilah yang pertama.</p>';return}
+    box.innerHTML=data.ucapan.map(function(m){
+      return '<div class="msg"><b>'+esc(m.nama)+'</b><em>'+(m.hadir==='Hadir'?'Hadir, '+m.jumlah+' orang':'Tidak hadir')+'</em><p>'+esc(m.ucapan)+'</p></div>';
+    }).join('');
   }
-  render();
+  function loadUcapan(){
+    fetch(GAS).then(function(r){return r.json()}).then(render).catch(function(){
+      $('msgs').innerHTML='<p class="empty">Gagal memuat ucapan.</p>';
+    });
+  }
+  loadUcapan();
   $('fAtt').addEventListener('change',function(){$('fNum').disabled=this.value!=='Hadir'});
   $('rsvpForm').addEventListener('submit',function(e){
     e.preventDefault();
+    var btn=this.querySelector('button[type=submit]');
+    btn.disabled=true;btn.textContent='Mengirim...';
     var h=$('fAtt').value==='Hadir';
-    list.unshift({n:$('fName').value.trim(),h:h,k:h?parseInt($('fNum').value,10):0,t:$('fMsg').value.trim()});
-    try{localStorage.setItem('ucapan-sh2',JSON.stringify(list.slice(0,30)))}catch(err){}
-    $('fMsg').value='';render();toast('Terima kasih, ucapan terkirim');
+    var body={nama:$('fName').value.trim(),ucapan:$('fMsg').value.trim(),hadir:$('fAtt').value,jumlah:h?parseInt($('fNum').value,10):0};
+    fetch(GAS,{method:'POST',body:JSON.stringify(body)})
+      .then(function(r){return r.json()})
+      .then(function(res){
+        if(res.status==='ok'){$('fMsg').value='';toast('Terima kasih, ucapan terkirim');loadUcapan()}
+        else{toast('Gagal mengirim, coba lagi')}
+      })
+      .catch(function(){toast('Gagal mengirim, coba lagi')})
+      .finally(function(){btn.disabled=false;btn.textContent='Kirim'});
   });
 })();
 </script>
